@@ -1,7 +1,8 @@
 import unittest
+from threading import Barrier, Thread
 from unittest.mock import patch
 
-from app import app, urls
+from app import app, codes_lock, urls
 
 
 class UrlShortenerTests(unittest.TestCase):
@@ -53,6 +54,12 @@ class UrlShortenerTests(unittest.TestCase):
             ("missing hostname", {"json": {"url": "https:///a/page"}}),
             ("non-HTTP scheme", {"json": {"url": "ftp://example.com/a"}}),
             ("malformed authority", {"json": {"url": "http://[invalid"}}),
+            ("textual port", {"json": {"url": "https://example.com:port/a"}}),
+            ("out-of-range port", {"json": {"url": "https://example.com:65536/a"}}),
+            ("CR/LF target", {"json": {"url": "https://example.com/a\r\nX-Test: bad"}}),
+            ("surrogate target", {"json": {"url": "https://example.com/" + chr(0xD800)}}),
+            ("rewritten path", {"json": {"url": "https://example.com/caf\u00e9"}}),
+            ("rewritten hostname", {"json": {"url": "https://\u00e9xample.com/a"}}),
         ]
 
         for name, arguments in cases:
@@ -87,6 +94,42 @@ class UrlShortenerTests(unittest.TestCase):
         self.assertEqual(first.get_json()["code"], "first")
         self.assertEqual(second.get_json()["code"], "second")
         self.assertEqual(urls, {"first": "https://example.com", "second": "https://example.com"})
+
+    def test_concurrent_collisions_create_unique_codes(self):
+        barrier = Barrier(2)
+
+        class RacingDict(dict):
+            def __contains__(self, key):
+                present = super().__contains__(key)
+                if key == "same" and not codes_lock.locked():
+                    barrier.wait()
+                return present
+
+        store = RacingDict()
+        responses = [None, None]
+
+        def submit(index, destination):
+            responses[index] = app.test_client().post(
+                "/shorten", json={"url": destination}
+            )
+
+        with (
+            patch("app.urls", store),
+            patch("app.secrets.token_urlsafe", side_effect=["same", "same", "other"]),
+        ):
+            threads = [
+                Thread(target=submit, args=(0, "https://first.example")),
+                Thread(target=submit, args=(1, "https://second.example")),
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        codes = [response.get_json()["code"] for response in responses]
+        self.assertEqual([response.status_code for response in responses], [201, 201])
+        self.assertEqual(len(set(codes)), 2)
+        self.assertEqual(len(store), 2)
 
     def test_route_map(self):
         routes = {
