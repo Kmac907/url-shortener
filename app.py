@@ -20,11 +20,9 @@ def shorten():
 
     try:
         parsed = urlsplit(url)
-        valid = (
-            parsed.scheme in {"http", "https"}
-            and parsed.hostname is not None
-            and redirect(url).get_wsgi_headers(request.environ)["Location"] == url
-        )
+        valid = parsed.scheme in {"http", "https"} and parsed.hostname is not None
+        if valid:
+            url = redirect(url).get_wsgi_headers(request.environ)["Location"]
     except (UnicodeError, ValueError):
         valid = False
     if not valid:

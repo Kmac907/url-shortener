@@ -1,6 +1,6 @@
 import unittest
 from threading import Barrier, Thread
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from app import app, codes_lock, urls
 
@@ -30,6 +30,26 @@ class UrlShortenerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(urls[response.get_json()["code"]], "https://example.com/secure")
 
+    def test_valid_normalized_urls(self):
+        cases = [
+            ("HTTP://example.com/a", "http://example.com/a"),
+            ("HtTpS://example.com/a", "https://example.com/a"),
+            ("https://EXAMPLE.COM/a", "https://example.com/a"),
+            ("https://example.com/caf\u00e9", "https://example.com/caf%C3%A9"),
+            ("https://\u00e9xample.com/a", "https://xn--xample-9ua.com/a"),
+        ]
+
+        for submitted, stored in cases:
+            with self.subTest(url=submitted):
+                created = self.client.post("/shorten", json={"url": submitted})
+                body = created.get_json()
+
+                self.assertEqual(created.status_code, 201)
+                self.assertEqual(urls[body["code"]], stored)
+                followed = self.client.get(body["short_url"])
+                self.assertEqual(followed.status_code, 302)
+                self.assertEqual(followed.headers["Location"], stored)
+
     def test_redirect(self):
         created = self.client.post(
             "/shorten", json={"url": "https://example.com/a/page?x=1"}
@@ -58,8 +78,6 @@ class UrlShortenerTests(unittest.TestCase):
             ("out-of-range port", {"json": {"url": "https://example.com:65536/a"}}),
             ("CR/LF target", {"json": {"url": "https://example.com/a\r\nX-Test: bad"}}),
             ("surrogate target", {"json": {"url": "https://example.com/" + chr(0xD800)}}),
-            ("rewritten path", {"json": {"url": "https://example.com/caf\u00e9"}}),
-            ("rewritten hostname", {"json": {"url": "https://\u00e9xample.com/a"}}),
         ]
 
         for name, arguments in cases:
@@ -84,7 +102,7 @@ class UrlShortenerTests(unittest.TestCase):
         self.assertEqual(response.get_json()["code"], "available")
         self.assertEqual(urls["taken"], "https://first.example")
         self.assertEqual(urls["available"], "https://second.example")
-        self.assertEqual(token_urlsafe.call_count, 3)
+        self.assertEqual(token_urlsafe.call_args_list, [call(6), call(6), call(6)])
 
     @patch("app.secrets.token_urlsafe", side_effect=["first", "second"])
     def test_repeated_submissions_create_new_codes(self, token_urlsafe):
@@ -102,29 +120,38 @@ class UrlShortenerTests(unittest.TestCase):
             def __contains__(self, key):
                 present = super().__contains__(key)
                 if key == "same" and not codes_lock.locked():
-                    barrier.wait()
+                    barrier.wait(timeout=1)
                 return present
 
         store = RacingDict()
         responses = [None, None]
+        errors = [None, None]
 
         def submit(index, destination):
-            responses[index] = app.test_client().post(
-                "/shorten", json={"url": destination}
-            )
+            try:
+                responses[index] = app.test_client().post(
+                    "/shorten", json={"url": destination}
+                )
+            except BaseException as error:
+                errors[index] = error
 
         with (
             patch("app.urls", store),
             patch("app.secrets.token_urlsafe", side_effect=["same", "same", "other"]),
         ):
             threads = [
-                Thread(target=submit, args=(0, "https://first.example")),
-                Thread(target=submit, args=(1, "https://second.example")),
+                Thread(target=submit, args=(0, "https://first.example"), daemon=True),
+                Thread(target=submit, args=(1, "https://second.example"), daemon=True),
             ]
             for thread in threads:
                 thread.start()
             for thread in threads:
-                thread.join()
+                thread.join(timeout=2)
+
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        for error in errors:
+            if error is not None:
+                raise error
 
         codes = [response.get_json()["code"] for response in responses]
         self.assertEqual([response.status_code for response in responses], [201, 201])
