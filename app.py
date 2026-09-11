@@ -1,7 +1,7 @@
 import re
 import secrets
 from threading import Lock
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from flask import Flask, Response, jsonify, request
 
@@ -84,12 +84,19 @@ def shorten():
 
     try:
         parsed = urlsplit(parse_url)
+        percent_hostname_valid = True
+        if zone is None and parsed.hostname and "%" in parsed.hostname:
+            decoded_hostname = unquote(parsed.hostname, errors="strict")
+            ascii_hostname = decoded_hostname.encode("idna").decode("ascii")
+            percent_hostname_valid = (
+                re.fullmatch(r"[A-Za-z0-9._~-]+", ascii_hostname) is not None
+            )
         valid = (
             re.search(r"[\s\\\x00-\x1f\x7f-\x9f]|%(?![0-9A-Fa-f]{2})", url) is None
             and re.search(r'["<>^`{|}]', parsed.netloc) is None
             and parsed.scheme in {"http", "https"}
             and parsed.hostname is not None
-            and (zone is not None or "%" not in parsed.hostname)
+            and percent_hostname_valid
         )
         if valid:
             parsed.port

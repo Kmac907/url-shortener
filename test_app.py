@@ -53,6 +53,8 @@ class UrlShortenerTests(unittest.TestCase):
             "http://user:@example.com/",
             "http://@example.com/",
             "http://example.com:/a",
+            "http://exa%6Dple.com/a",
+            "http://%C3%A9xample.com/a",
         ]
 
         for submitted in cases:
@@ -139,6 +141,13 @@ class UrlShortenerTests(unittest.TestCase):
             ("percent hostname", {"json": {"url": "http://%/"}}),
             ("encoded control hostname", {"json": {"url": "http://%00/a"}}),
             ("encoded slash hostname", {"json": {"url": "http://example.com%2f.evil/a"}}),
+            ("encoded backslash hostname", {"json": {"url": "http://exa%5Cmple.com/a"}}),
+            ("encoded at hostname", {"json": {"url": "http://exa%40mple.com/a"}}),
+            ("encoded colon hostname", {"json": {"url": "http://exa%3Ample.com/a"}}),
+            ("encoded query hostname", {"json": {"url": "http://exa%3Fmple.com/a"}}),
+            ("encoded fragment hostname", {"json": {"url": "http://exa%23mple.com/a"}}),
+            ("encoded reserved hostname", {"json": {"url": "http://exa%21mple.com/a"}}),
+            ("invalid UTF-8 hostname", {"json": {"url": "http://%FF.example/a"}}),
             ("less-than hostname", {"json": {"url": "http://exa<mple.com/"}}),
             ("greater-than hostname", {"json": {"url": "http://exa>mple.com/"}}),
             ("pipe hostname", {"json": {"url": "http://exa|mple.com/"}}),
