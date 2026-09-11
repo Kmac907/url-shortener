@@ -43,6 +43,7 @@ class UrlShortenerTests(unittest.TestCase):
             ("http://[v1.foo]/a", "http://[v1.foo]/a"),
             ("https://user%3Aname@example.com/a", "https://user%3Aname@example.com/a"),
             ("http://[fe80::1%25eth0]/a", "http://[fe80::1%25eth0]/a"),
+            ("http://[fe80::1%25eth%30]/a", "http://[fe80::1%25eth%30]/a"),
             ("HTTP://[V1.Foo]/a", "http://[v1.foo]/a"),
         ]
 
