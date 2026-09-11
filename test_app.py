@@ -45,6 +45,10 @@ class UrlShortenerTests(unittest.TestCase):
             ("http://[fe80::1%25eth0]/a", "http://[fe80::1%25eth0]/a"),
             ("http://[fe80::1%25eth%30]/a", "http://[fe80::1%25eth%30]/a"),
             ("HTTP://[V1.Foo]/a", "http://[v1.foo]/a"),
+            ("https://example.com/a?", "https://example.com/a?"),
+            ("https://example.com/a#", "https://example.com/a#"),
+            ("https://example.com/a?#part", "https://example.com/a?#part"),
+            ("https://example.com/a?x#", "https://example.com/a?x#"),
         ]
 
         for submitted, stored in cases:

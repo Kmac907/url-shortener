@@ -57,6 +57,8 @@ def shorten():
             and (zone is not None or "%" not in parsed.hostname)
         )
         if valid:
+            before_fragment, fragment_marker, fragment = parse_url.partition("#")
+            _, query_marker, query = before_fragment.partition("?")
             port = parsed.port
             normalized = urlsplit(
                 redirect(parse_url).get_wsgi_headers(request.environ)["Location"]
@@ -73,6 +75,11 @@ def shorten():
                 f":{port}" if port is not None else ""
             )
             url = normalized._replace(netloc=netloc).geturl()
+            if query_marker and not query:
+                base, marker, tail = url.partition("#")
+                url = f"{base}?{marker}{tail}"
+            if fragment_marker and not fragment:
+                url += "#"
     except (UnicodeError, ValueError):
         valid = False
     if not valid:
