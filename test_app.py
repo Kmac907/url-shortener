@@ -91,6 +91,10 @@ class UrlShortenerTests(unittest.TestCase):
             ("percent hostname", {"json": {"url": "http://%/"}}),
             ("encoded control hostname", {"json": {"url": "http://%00/a"}}),
             ("encoded slash hostname", {"json": {"url": "http://example.com%2f.evil/a"}}),
+            ("less-than hostname", {"json": {"url": "http://exa<mple.com/"}}),
+            ("greater-than hostname", {"json": {"url": "http://exa>mple.com/"}}),
+            ("pipe hostname", {"json": {"url": "http://exa|mple.com/"}}),
+            ("caret hostname", {"json": {"url": "http://exa^mple.com/"}}),
         ]
 
         for name, arguments in cases:

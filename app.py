@@ -30,7 +30,7 @@ def shorten():
         parsed = urlsplit(url)
         valid = (
             re.search(r"[\s\\\x00-\x1f\x7f-\x9f]|%(?![0-9A-Fa-f]{2})", url) is None
-            and "%" not in parsed.netloc
+            and re.search(r'[%"<>^`{|}]', parsed.netloc) is None
             and parsed.scheme in {"http", "https"}
             and parsed.hostname is not None
         )
