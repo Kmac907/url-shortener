@@ -25,15 +25,28 @@ def shorten():
     url = data.get("url") if isinstance(data, dict) else None
     if not isinstance(url, str) or not (url := url.strip()):
         return jsonify(error="invalid URL"), 400
+    url = re.sub(
+        r"^((?i:https?)://(?:[^/?#@]*@)?\[)V(?=[0-9A-Fa-f]+\.)", r"\1v", url
+    )
 
     try:
         parsed = urlsplit(url)
+        hostpart = parsed.netloc.rpartition("@")[2]
         valid = (
             re.search(r"[\s\\\x00-\x1f\x7f-\x9f]|%(?![0-9A-Fa-f]{2})", url) is None
             and re.search(r'["<>^`{|}]', parsed.netloc) is None
             and parsed.scheme in {"http", "https"}
             and parsed.hostname is not None
-            and ("%" not in parsed.hostname or parsed.netloc.rpartition("@")[2].startswith("["))
+            and (
+                "%" not in parsed.hostname
+                or (
+                    hostpart.startswith("[")
+                    and re.fullmatch(
+                        r"[0-9A-Fa-f:.]+%25[A-Za-z0-9._~-]+", parsed.hostname
+                    )
+                    is not None
+                )
+            )
         )
         if valid:
             port = parsed.port
@@ -42,7 +55,7 @@ def shorten():
             )
             userinfo, separator, _ = normalized.netloc.rpartition("@")
             host = normalized.hostname
-            if parsed.netloc.rpartition("@")[2].startswith("["):
+            if hostpart.startswith("["):
                 host = f"[{parsed.hostname}]"
             netloc = f"{userinfo}{separator}{host}" + (
                 f":{port}" if port is not None else ""

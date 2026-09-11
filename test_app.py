@@ -43,6 +43,7 @@ class UrlShortenerTests(unittest.TestCase):
             ("http://[v1.foo]/a", "http://[v1.foo]/a"),
             ("https://user%3Aname@example.com/a", "https://user%3Aname@example.com/a"),
             ("http://[fe80::1%25eth0]/a", "http://[fe80::1%25eth0]/a"),
+            ("HTTP://[V1.Foo]/a", "http://[v1.foo]/a"),
         ]
 
         for submitted, stored in cases:
@@ -97,6 +98,9 @@ class UrlShortenerTests(unittest.TestCase):
             ("greater-than hostname", {"json": {"url": "http://exa>mple.com/"}}),
             ("pipe hostname", {"json": {"url": "http://exa|mple.com/"}}),
             ("caret hostname", {"json": {"url": "http://exa^mple.com/"}}),
+            ("invalid IPv6 zone delimiter", {"json": {"url": "http://[fe80::1%00eth0]/x"}}),
+            ("empty IPv6 zone", {"json": {"url": "http://[fe80::1%25]/x"}}),
+            ("unsafe IPv6 zone", {"json": {"url": "http://[fe80::1%25eth!0]/x"}}),
         ]
 
         for name, arguments in cases:
