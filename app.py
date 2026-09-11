@@ -3,7 +3,7 @@ import secrets
 from threading import Lock
 from urllib.parse import urlsplit
 
-from flask import Flask, Response, jsonify, redirect, request
+from flask import Flask, Response, jsonify, request
 
 
 app = Flask(__name__, static_folder=None)
@@ -29,26 +29,24 @@ def shorten():
     url = data.get("url") if isinstance(data, dict) else None
     if not isinstance(url, str) or not (url := url.strip()):
         return jsonify(error="invalid URL"), 400
-    url = re.sub(
+    parse_url = re.sub(
         r"^((?i:https?)://(?:[^/?#@]*@)?\[)V(?=[0-9A-Fa-f]+\.)", r"\1v", url
     )
     zone = re.search(
         r"^(?i:https?)://(?:[^/?#@]*@)?\[([0-9A-Fa-f:.]+)%25"
         r"((?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})+)\]"
         r"(?=:\d*(?:[/?#]|$)|[/?#]|$)",
-        url,
+        parse_url,
     )
-    parse_url = url
     if zone:
         parse_url = (
-            url[: zone.start(2)]
+            parse_url[: zone.start(2)]
             + re.sub(r"%[0-9A-Fa-f]{2}", "x", zone[2])
-            + url[zone.end(2) :]
+            + parse_url[zone.end(2) :]
         )
 
     try:
         parsed = urlsplit(parse_url)
-        hostpart = parsed.netloc.rpartition("@")[2]
         valid = (
             re.search(r"[\s\\\x00-\x1f\x7f-\x9f]|%(?![0-9A-Fa-f]{2})", url) is None
             and re.search(r'["<>^`{|}]', parsed.netloc) is None
@@ -57,29 +55,8 @@ def shorten():
             and (zone is not None or "%" not in parsed.hostname)
         )
         if valid:
-            before_fragment, fragment_marker, fragment = parse_url.partition("#")
-            _, query_marker, query = before_fragment.partition("?")
-            port = parsed.port
-            normalized = urlsplit(
-                redirect(parse_url).get_wsgi_headers(request.environ)["Location"]
-            )
-            userinfo, separator, _ = normalized.netloc.rpartition("@")
-            host = normalized.hostname
-            if hostpart.startswith("["):
-                host = (
-                    f"[{zone[1].lower()}%25{zone[2]}]"
-                    if zone
-                    else f"[{parsed.hostname}]"
-                )
-            netloc = f"{userinfo}{separator}{host}" + (
-                f":{port}" if port is not None else ""
-            )
-            url = normalized._replace(netloc=netloc).geturl()
-            if query_marker and not query:
-                base, marker, tail = url.partition("#")
-                url = f"{base}?{marker}{tail}"
-            if fragment_marker and not fragment:
-                url += "#"
+            parsed.port
+            url.encode("latin-1")
     except (UnicodeError, ValueError):
         valid = False
     if not valid:
