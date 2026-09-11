@@ -39,6 +39,8 @@ class UrlShortenerTests(unittest.TestCase):
             ("https://example.com/a%20b", "https://example.com/a%20b"),
             ("http://127.0.0.1:8080/a?x=1#part", "http://127.0.0.1:8080/a?x=1#part"),
             ("https://[2001:db8::1]:8443/a", "https://[2001:db8::1]:8443/a"),
+            ("http://example.com:0/a", "http://example.com:0/a"),
+            ("http://[v1.foo]/a", "http://[v1.foo]/a"),
         ]
 
         for submitted, stored in cases:
@@ -87,6 +89,8 @@ class UrlShortenerTests(unittest.TestCase):
             ("backslash", {"json": {"url": "https://example.com\\evil/"}}),
             ("space in path", {"json": {"url": "https://example.com/a b"}}),
             ("percent hostname", {"json": {"url": "http://%/"}}),
+            ("encoded control hostname", {"json": {"url": "http://%00/a"}}),
+            ("encoded slash hostname", {"json": {"url": "http://example.com%2f.evil/a"}}),
         ]
 
         for name, arguments in cases:
