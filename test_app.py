@@ -1,5 +1,4 @@
 import unittest
-from threading import Barrier, Thread
 from unittest.mock import call, patch
 
 from app import app, codes_lock, urls
@@ -78,6 +77,9 @@ class UrlShortenerTests(unittest.TestCase):
             ("out-of-range port", {"json": {"url": "https://example.com:65536/a"}}),
             ("CR/LF target", {"json": {"url": "https://example.com/a\r\nX-Test: bad"}}),
             ("surrogate target", {"json": {"url": "https://example.com/" + chr(0xD800)}}),
+            ("DEL in hostname", {"json": {"url": "http://exa\x7fmple.com/"}}),
+            ("space in hostname", {"json": {"url": "http://exa mple.com/"}}),
+            ("control in path", {"json": {"url": "http://example.com/\x01"}}),
         ]
 
         for name, arguments in cases:
@@ -92,16 +94,34 @@ class UrlShortenerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.get_json(), {"error": "code not found"})
 
-    @patch("app.secrets.token_urlsafe", side_effect=["taken", "taken", "available"])
-    def test_collision_retries_without_overwriting(self, token_urlsafe):
-        urls["taken"] = "https://first.example"
+    def test_collision_retries_without_overwriting(self):
+        class LockedDict(dict):
+            def __contains__(self, key):
+                if not codes_lock.locked():
+                    raise AssertionError("collision check must hold codes_lock")
+                return super().__contains__(key)
 
-        response = self.client.post("/shorten", json={"url": "https://second.example"})
+            def __setitem__(self, key, value):
+                if not codes_lock.locked():
+                    raise AssertionError("insertion must hold codes_lock")
+                return super().__setitem__(key, value)
+
+        store = LockedDict({"taken": "https://first.example"})
+        with (
+            patch("app.urls", store),
+            patch(
+                "app.secrets.token_urlsafe",
+                side_effect=["taken", "taken", "available"],
+            ) as token_urlsafe,
+        ):
+            response = self.client.post(
+                "/shorten", json={"url": "https://second.example"}
+            )
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.get_json()["code"], "available")
-        self.assertEqual(urls["taken"], "https://first.example")
-        self.assertEqual(urls["available"], "https://second.example")
+        self.assertEqual(store["taken"], "https://first.example")
+        self.assertEqual(store["available"], "https://second.example")
         self.assertEqual(token_urlsafe.call_args_list, [call(6), call(6), call(6)])
 
     @patch("app.secrets.token_urlsafe", side_effect=["first", "second"])
@@ -112,51 +132,6 @@ class UrlShortenerTests(unittest.TestCase):
         self.assertEqual(first.get_json()["code"], "first")
         self.assertEqual(second.get_json()["code"], "second")
         self.assertEqual(urls, {"first": "https://example.com", "second": "https://example.com"})
-
-    def test_concurrent_collisions_create_unique_codes(self):
-        barrier = Barrier(2)
-
-        class RacingDict(dict):
-            def __contains__(self, key):
-                present = super().__contains__(key)
-                if key == "same" and not codes_lock.locked():
-                    barrier.wait(timeout=1)
-                return present
-
-        store = RacingDict()
-        responses = [None, None]
-        errors = [None, None]
-
-        def submit(index, destination):
-            try:
-                responses[index] = app.test_client().post(
-                    "/shorten", json={"url": destination}
-                )
-            except BaseException as error:
-                errors[index] = error
-
-        with (
-            patch("app.urls", store),
-            patch("app.secrets.token_urlsafe", side_effect=["same", "same", "other"]),
-        ):
-            threads = [
-                Thread(target=submit, args=(0, "https://first.example"), daemon=True),
-                Thread(target=submit, args=(1, "https://second.example"), daemon=True),
-            ]
-            for thread in threads:
-                thread.start()
-            for thread in threads:
-                thread.join(timeout=2)
-
-        self.assertFalse(any(thread.is_alive() for thread in threads))
-        for error in errors:
-            if error is not None:
-                raise error
-
-        codes = [response.get_json()["code"] for response in responses]
-        self.assertEqual([response.status_code for response in responses], [201, 201])
-        self.assertEqual(len(set(codes)), 2)
-        self.assertEqual(len(store), 2)
 
     def test_route_map(self):
         routes = {

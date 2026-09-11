@@ -20,7 +20,12 @@ def shorten():
 
     try:
         parsed = urlsplit(url)
-        valid = parsed.scheme in {"http", "https"} and parsed.hostname is not None
+        valid = (
+            not any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in url)
+            and parsed.scheme in {"http", "https"}
+            and parsed.hostname is not None
+            and not any(char.isspace() for char in parsed.netloc)
+        )
         if valid:
             url = redirect(url).get_wsgi_headers(request.environ)["Location"]
     except (UnicodeError, ValueError):
