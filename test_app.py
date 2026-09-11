@@ -66,6 +66,22 @@ class UrlShortenerTests(unittest.TestCase):
                 self.assertEqual(followed.status_code, 302)
                 self.assertEqual(followed.headers["Location"], submitted.strip())
 
+    def test_non_latin_iri_uses_safe_location(self):
+        submitted = "https://例え.テスト/道"
+
+        response = self.client.post("/shorten", json={"url": submitted})
+
+        self.assertEqual(response.status_code, 201)
+        body = response.get_json()
+        self.assertEqual(urls[body["code"]], submitted)
+        followed = self.client.get(body["short_url"])
+        self.assertEqual(followed.status_code, 302)
+        self.assertEqual(
+            followed.headers["Location"],
+            "https://xn--r8jz45g.xn--zckzah/%E9%81%93",
+        )
+        followed.headers["Location"].encode("latin-1")
+
     def test_redirect(self):
         created = self.client.post(
             "/shorten", json={"url": "https://example.com/a/page?x=1"}

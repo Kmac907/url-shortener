@@ -14,7 +14,13 @@ codes_lock = Lock()
 
 class ExactRedirectResponse(Response):
     def get_wsgi_headers(self, environ):
-        location = self.headers.pop("Location")
+        location = self.headers["Location"]
+        try:
+            location.encode("latin-1")
+        except UnicodeEncodeError:
+            return super().get_wsgi_headers(environ)
+
+        self.headers.pop("Location")
         try:
             headers = super().get_wsgi_headers(environ)
         finally:
@@ -56,7 +62,9 @@ def shorten():
         )
         if valid:
             parsed.port
-            url.encode("latin-1")
+            ExactRedirectResponse(
+                status=302, headers={"Location": url}
+            ).get_wsgi_headers(request.environ)
     except (UnicodeError, ValueError):
         valid = False
     if not valid:
