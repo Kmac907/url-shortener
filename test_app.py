@@ -29,38 +29,78 @@ class UrlShortenerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(urls[response.get_json()["code"]], "https://example.com/secure")
 
-    def test_valid_normalized_urls(self):
+    def test_valid_urls_preserve_trimmed_input(self):
         cases = [
-            ("HTTP://example.com/a", "http://example.com/a"),
-            ("HtTpS://example.com/a", "https://example.com/a"),
-            ("https://EXAMPLE.COM/a", "https://example.com/a"),
-            ("https://example.com/caf\u00e9", "https://example.com/caf%C3%A9"),
-            ("https://\u00e9xample.com/a", "https://xn--xample-9ua.com/a"),
-            ("https://example.com/a%20b", "https://example.com/a%20b"),
-            ("http://127.0.0.1:8080/a?x=1#part", "http://127.0.0.1:8080/a?x=1#part"),
-            ("https://[2001:db8::1]:8443/a", "https://[2001:db8::1]:8443/a"),
-            ("http://example.com:0/a", "http://example.com:0/a"),
-            ("http://[v1.foo]/a", "http://[v1.foo]/a"),
-            ("https://user%3Aname@example.com/a", "https://user%3Aname@example.com/a"),
-            ("http://[fe80::1%25eth0]/a", "http://[fe80::1%25eth0]/a"),
-            ("http://[fe80::1%25eth%30]/a", "http://[fe80::1%25eth%30]/a"),
-            ("HTTP://[V1.Foo]/a", "http://[v1.foo]/a"),
-            ("https://example.com/a?", "https://example.com/a?"),
-            ("https://example.com/a#", "https://example.com/a#"),
-            ("https://example.com/a?#part", "https://example.com/a?#part"),
-            ("https://example.com/a?x#", "https://example.com/a?x#"),
+            "HTTP://example.com/a",
+            "HtTpS://example.com/a",
+            "https://EXAMPLE.COM/a",
+            "https://example.com/caf\u00e9",
+            "https://\u00e9xample.com/a",
+            "https://example.com/a%20b",
+            "http://127.0.0.1:8080/a?x=1#part",
+            "https://[2001:db8::1]:8443/a",
+            "http://example.com:0/a",
+            "http://[v1.foo]/a",
+            "https://user%3Aname@example.com/a",
+            "http://[fe80::1%25eth0]/a",
+            "http://[fe80::1%25eth%30]/a",
+            "HTTP://[V1.Foo]/a",
+            "https://example.com/a?",
+            "https://example.com/a#",
+            "https://example.com/a?#part",
+            "https://example.com/a?x#",
+            "HTTP://EXAMPLE.COM/a",
+            "http://user:@example.com/",
+            "http://@example.com/",
+            "http://example.com:/a",
         ]
 
-        for submitted, stored in cases:
+        for submitted in cases:
             with self.subTest(url=submitted):
                 created = self.client.post("/shorten", json={"url": submitted})
                 body = created.get_json()
 
                 self.assertEqual(created.status_code, 201)
-                self.assertEqual(urls[body["code"]], stored)
+                self.assertEqual(urls[body["code"]], submitted.strip())
                 followed = self.client.get(body["short_url"])
                 self.assertEqual(followed.status_code, 302)
-                self.assertEqual(followed.headers["Location"], stored)
+                self.assertEqual(followed.headers["Location"], submitted.strip())
+
+    def test_non_latin_iris_preserve_structure_in_safe_locations(self):
+        cases = [
+            (
+                "https://例え.テスト/道",
+                "https://xn--r8jz45g.xn--zckzah/%E9%81%93",
+            ),
+            ("http://[v1.foo]/道", "http://[v1.foo]/%E9%81%93"),
+            ("https://example.com/道?", "https://example.com/%E9%81%93?"),
+            ("https://example.com/道#", "https://example.com/%E9%81%93#"),
+            (
+                "https://example.com/道?#part",
+                "https://example.com/%E9%81%93?#part",
+            ),
+            ("HTTP://[V1.Foo]/道", "HTTP://[V1.Foo]/%E9%81%93"),
+            (
+                "http://[fe80::1%25eth%30]/道",
+                "http://[fe80::1%25eth%30]/%E9%81%93",
+            ),
+            ("HTTP://EXAMPLE.COM/道", "HTTP://EXAMPLE.COM/%E9%81%93"),
+            ("http://user:@example.com/道", "http://user:@example.com/%E9%81%93"),
+            ("http://@example.com/道", "http://@example.com/%E9%81%93"),
+            ("http://example.com:/道", "http://example.com:/%E9%81%93"),
+        ]
+
+        for submitted, expected_location in cases:
+            with self.subTest(url=submitted):
+                response = self.client.post("/shorten", json={"url": submitted})
+
+                self.assertEqual(response.status_code, 201)
+                body = response.get_json()
+                self.assertEqual(urls[body["code"]], submitted)
+                followed = self.client.get(body["short_url"])
+                self.assertEqual(followed.status_code, 302)
+                self.assertEqual(followed.headers["Location"], expected_location)
+                followed.headers["Location"].encode("latin-1")
 
     def test_redirect(self):
         created = self.client.post(
