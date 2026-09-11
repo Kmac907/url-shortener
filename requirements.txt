@@ -1,0 +1,24 @@
+build a basic url shortener
+REST API with:
+
+- POST /shorten - accepts a long URL and returns a short code
+
+- GET /:code - redirects to the original URL
+
+- In-memory storage is fine
+
+- Add basic validation
+  - input validation
+  - basic test suite
+
+- no frontend api only
+
+- 2 endpoints
+
+- no database needed, in memory
+
+- add basic validation
+
+- python?
+
+
