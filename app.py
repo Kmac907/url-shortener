@@ -1,3 +1,4 @@
+import re
 import secrets
 from threading import Lock
 from urllib.parse import urlsplit
@@ -21,10 +22,9 @@ def shorten():
     try:
         parsed = urlsplit(url)
         valid = (
-            not any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in url)
+            re.search(r"[\s\\\x00-\x1f\x7f-\x9f]|%(?![0-9A-Fa-f]{2})", url) is None
             and parsed.scheme in {"http", "https"}
             and parsed.hostname is not None
-            and not any(char.isspace() for char in parsed.netloc)
         )
         if valid:
             url = redirect(url).get_wsgi_headers(request.environ)["Location"]

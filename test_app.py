@@ -36,6 +36,9 @@ class UrlShortenerTests(unittest.TestCase):
             ("https://EXAMPLE.COM/a", "https://example.com/a"),
             ("https://example.com/caf\u00e9", "https://example.com/caf%C3%A9"),
             ("https://\u00e9xample.com/a", "https://xn--xample-9ua.com/a"),
+            ("https://example.com/a%20b", "https://example.com/a%20b"),
+            ("http://127.0.0.1:8080/a?x=1#part", "http://127.0.0.1:8080/a?x=1#part"),
+            ("https://[2001:db8::1]:8443/a", "https://[2001:db8::1]:8443/a"),
         ]
 
         for submitted, stored in cases:
@@ -80,6 +83,10 @@ class UrlShortenerTests(unittest.TestCase):
             ("DEL in hostname", {"json": {"url": "http://exa\x7fmple.com/"}}),
             ("space in hostname", {"json": {"url": "http://exa mple.com/"}}),
             ("control in path", {"json": {"url": "http://example.com/\x01"}}),
+            ("invalid percent escape", {"json": {"url": "https://example.com/%GG"}}),
+            ("backslash", {"json": {"url": "https://example.com\\evil/"}}),
+            ("space in path", {"json": {"url": "https://example.com/a b"}}),
+            ("percent hostname", {"json": {"url": "http://%/"}}),
         ]
 
         for name, arguments in cases:
@@ -87,6 +94,7 @@ class UrlShortenerTests(unittest.TestCase):
                 response = self.client.post("/shorten", **arguments)
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.get_json(), {"error": "invalid URL"})
+                self.assertEqual(urls, {})
 
     def test_unknown_code(self):
         response = self.client.get("/missing")
