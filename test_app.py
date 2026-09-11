@@ -66,21 +66,41 @@ class UrlShortenerTests(unittest.TestCase):
                 self.assertEqual(followed.status_code, 302)
                 self.assertEqual(followed.headers["Location"], submitted.strip())
 
-    def test_non_latin_iri_uses_safe_location(self):
-        submitted = "https://例え.テスト/道"
+    def test_non_latin_iris_preserve_structure_in_safe_locations(self):
+        cases = [
+            (
+                "https://例え.テスト/道",
+                "https://xn--r8jz45g.xn--zckzah/%E9%81%93",
+            ),
+            ("http://[v1.foo]/道", "http://[v1.foo]/%E9%81%93"),
+            ("https://example.com/道?", "https://example.com/%E9%81%93?"),
+            ("https://example.com/道#", "https://example.com/%E9%81%93#"),
+            (
+                "https://example.com/道?#part",
+                "https://example.com/%E9%81%93?#part",
+            ),
+            ("HTTP://[V1.Foo]/道", "HTTP://[V1.Foo]/%E9%81%93"),
+            (
+                "http://[fe80::1%25eth%30]/道",
+                "http://[fe80::1%25eth%30]/%E9%81%93",
+            ),
+            ("HTTP://EXAMPLE.COM/道", "HTTP://EXAMPLE.COM/%E9%81%93"),
+            ("http://user:@example.com/道", "http://user:@example.com/%E9%81%93"),
+            ("http://@example.com/道", "http://@example.com/%E9%81%93"),
+            ("http://example.com:/道", "http://example.com:/%E9%81%93"),
+        ]
 
-        response = self.client.post("/shorten", json={"url": submitted})
+        for submitted, expected_location in cases:
+            with self.subTest(url=submitted):
+                response = self.client.post("/shorten", json={"url": submitted})
 
-        self.assertEqual(response.status_code, 201)
-        body = response.get_json()
-        self.assertEqual(urls[body["code"]], submitted)
-        followed = self.client.get(body["short_url"])
-        self.assertEqual(followed.status_code, 302)
-        self.assertEqual(
-            followed.headers["Location"],
-            "https://xn--r8jz45g.xn--zckzah/%E9%81%93",
-        )
-        followed.headers["Location"].encode("latin-1")
+                self.assertEqual(response.status_code, 201)
+                body = response.get_json()
+                self.assertEqual(urls[body["code"]], submitted)
+                followed = self.client.get(body["short_url"])
+                self.assertEqual(followed.status_code, 302)
+                self.assertEqual(followed.headers["Location"], expected_location)
+                followed.headers["Location"].encode("latin-1")
 
     def test_redirect(self):
         created = self.client.post(

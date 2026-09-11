@@ -1,7 +1,7 @@
 import re
 import secrets
 from threading import Lock
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from flask import Flask, Response, jsonify, request
 
@@ -18,7 +18,38 @@ class ExactRedirectResponse(Response):
         try:
             location.encode("latin-1")
         except UnicodeEncodeError:
-            return super().get_wsgi_headers(environ)
+            authority_start = location.index("://") + 3
+            authority_end = min(
+                (
+                    position
+                    for delimiter in "/?#"
+                    if (position := location.find(delimiter, authority_start)) >= 0
+                ),
+                default=len(location),
+            )
+            userinfo_end = location.rfind("@", authority_start, authority_end)
+            host_start = authority_start if userinfo_end < 0 else userinfo_end + 1
+            if location.startswith("[", host_start):
+                host_end = location.index("]", host_start, authority_end) + 1
+                host = location[host_start:host_end]
+            else:
+                port_start = location.find(":", host_start, authority_end)
+                host_end = authority_end if port_start < 0 else port_start
+                host = location[host_start:host_end]
+                if not host.isascii():
+                    host = host.encode("idna").decode("ascii")
+            location = (
+                "".join(
+                    character if character.isascii() else quote(character)
+                    for character in location[:host_start]
+                )
+                + host
+                + "".join(
+                    character if character.isascii() else quote(character)
+                    for character in location[host_end:]
+                )
+            )
+            location.encode("ascii")
 
         self.headers.pop("Location")
         try:
